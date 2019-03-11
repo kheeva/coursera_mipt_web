@@ -2,20 +2,14 @@ import re
 import os
 import time
 
-import lxml
 from bs4 import BeautifulSoup
 from collections import deque
 
 
 # Вспомогательная функция, её наличие не обязательно и не будет проверяться
-def build_tree(start, end, path):
+def build_links_path(start, end, path):
     files = dict.fromkeys(os.listdir(path))
     files_set = set([''.join(['/wiki/', f]) for f in files.keys()])
-    tree = []
-
-    parsed_links = set()
-    links_to_parse = deque()
-    links_to_parse.append({'start': start})
 
     def get_downlinks(link, path='./wiki/'):
         with open("{}{}".format(path, link)) as html:
@@ -27,36 +21,34 @@ def build_tree(start, end, path):
         _downlinks = [d[6:] for d in files_set & links_set]
         return _downlinks
 
+    parsed_links = set()
+    links_to_parse = deque()
+    links_to_parse.append([([start], []),])
+
     while links_to_parse:
-        branch = []
-        parent, step_link_to_parse = links_to_parse.popleft().items()
+        search_level_links = []
+        graph_level_nodes = links_to_parse.popleft()
 
-        if end in step_link_to_parse:
-            tree.append([end])
-            return tree
+        for links_data in graph_level_nodes:
+            links, graph_path = links_data
+            if end in links:
+                graph_path.append(end)
+                return graph_path
 
-        tree.append(step_link_to_parse)
+            for link in links:
+                if link in parsed_links:
+                    continue
 
-        for link in step_link_to_parse:
-            if link not in parsed_links:
-                branch += get_downlinks(link)
+                downlinks = get_downlinks(link)
+                new_path = graph_path + [link]
+                search_level_links.append((
+                    downlinks,
+                    new_path
+                ))
                 parsed_links.add(link)
 
-        if branch:
-            links_to_parse.append(branch)
-
-    return tree
-
-
-# Вспомогательная функция, её наличие не обязательно и не будет проверяться
-def build_bridge(start, end, path):
-    files = build_tree(start, end, path)
-    bridge = []
-    # TODO Добавить нужные страницы в bridge
-    bridge.append(end)
-    for link in files['end']:
-        pass
-    return bridge
+        if search_level_links:
+            links_to_parse.append(search_level_links)
 
 
 def parse(start, end, path):
@@ -67,7 +59,7 @@ def parse(start, end, path):
     Чтобы получить максимальный балл, придется искать все страницы. Удачи!
     """
 
-    bridge = build_bridge(start, end, path)  # Искать список страниц можно как угодно, даже так: bridge = [end, start]
+    bridge = build_links_path(start, end, path)  # Искать список страниц можно как угодно, даже так: bridge = [end, start]
 
     # Когда есть список страниц, из них нужно вытащить данные и вернуть их
     out = {}
@@ -77,13 +69,26 @@ def parse(start, end, path):
 
         body = soup.find(id="bodyContent")
 
-        # TODO посчитать реальные значения
-        imgs = 5  # Количество картинок (img) с шириной (width) не меньше 200
-        headers = 10  # Количество заголовков, первая буква текста внутри которого: E, T или C
-        linkslen = 15  # Длина максимальной последовательности ссылок, между которыми нет других тегов
-        lists = 20  # Количество списков, не вложенных в другие списки
+        images_count = 0
+        for pic in body.find_all('img', width=True):
+            if int(pic['width']) >= 200:
+                images_count += 1
 
-        out[file] = [imgs, headers, linkslen, lists]
+        headers = 0
+        for h_tag in body.select("h1, h2, h3, h4, h5, h6"):
+            if re.match(r'^[ETC].*$', h_tag.text):
+                headers += 1
+
+
+
+
+        # TODO посчитать реальные значения
+        # imgs = 5  # Количество картинок (img) с шириной (width) не меньше 200
+        # headers = 10  # Количество заголовков, первая буква текста внутри которого: E, T или C
+        # linkslen = 15  # Длина максимальной последовательности ссылок, между которыми нет других тегов
+        # lists = 20  # Количество списков, не вложенных в другие списки
+
+        out[file] = [images_count, headers]
 
     return out
 
@@ -91,8 +96,18 @@ start = 'Stone_Age'
 end = 'Python_(programming_language)'
 path = './wiki/'
 
-t = time.time()
-f = build_tree(start, end, path)
-for i in f:
-    print(i)
-print(time.time() - t)
+def lll(file, path):
+    with open("{}{}".format(path, file)) as data:
+        soup = BeautifulSoup(data, "lxml")
+
+    body = soup.find(id="bodyContent")
+
+    # print(type(body.contents))
+    print(re.findall(r'(?:<a.*?</a>)(?:[^<a.*?</a>])(?:<a.*?</a>)', str(body.contents)))
+
+lll(start, path)
+
+# t = time.time()
+# x = parse(start, end, path)
+# print(x)
+# print(time.time() - t)
