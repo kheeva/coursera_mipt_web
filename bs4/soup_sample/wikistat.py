@@ -1,65 +1,53 @@
 import re
 import os
 
-import lxml
 from bs4 import BeautifulSoup
-
+from collections import deque
 
 
 # Вспомогательная функция, её наличие не обязательно и не будет проверяться
-def build_tree(start, end, path):
-    pages_tree = []
-    link_re = re.compile(r"(?<=/wiki/)[\w()]+")  # Искать ссылки можно как угодно, не обязательно через re
-    files = dict.fromkeys(os.listdir(path))  # Словарь вида {"filename1": None, "filename2": None, ...}
-    # TODO Проставить всем ключам в files правильного родителя в значение, начиная от start
-    with open("{}{}".format(path, start)) as html:
-        soup = BeautifulSoup(html, 'lxml')
-    div = soup.find('div', {'id': 'bodyContent'})
-    links = div.find_all('a', href=True)
-
-    # r = [l.text for l in links]
-    # if end in r:
-    #     return pages_tree
-    # else:
-    #     print(r)
-    #     print(len(r))
-    # return files
-
-
-    # for link in links:
-    #     print(link.text)
-        # if link.text in files.keys():
-        #     files[link.text] = start
-
+def build_links_path(start, end, path):
+    files = dict.fromkeys(os.listdir(path))
     files_set = set([''.join(['/wiki/', f]) for f in files.keys()])
-    links_set = set([l['href'] for l in links])
-    print(files_set)
-    # print(links_set)
-    downlinks = [d[6:] for d in files_set & links_set]
-    downlinks_to_parse = set()
 
-    for downlink in downlinks:
-        if not files[downlink]:
-            files[downlink] = [start]
-        else:
-            files[downlink].append(start)
+    def get_downlinks(link, path='./wiki/'):
+        with open("{}{}".format(path, link)) as html:
+            soup = BeautifulSoup(html, 'lxml')
 
-        if end != downlink:
-            downlinks_to_parse.add(downlink)
+        div = soup.find('div', {'id': 'bodyContent'})
+        links = div.find_all('a', href=True)
+        links_set = set([l['href'] for l in links])
+        _downlinks = [d[6:] for d in files_set & links_set]
+        return _downlinks
 
-    for link_to_parse in downlinks_to_parse:
-        print(link_to_parse)
-        build_tree('/wiki/'+link_to_parse, end, files)
+    parsed_links = set()
+    links_to_parse = deque()
+    links_to_parse.append([([start], []),])
 
-    return files
+    while links_to_parse:
+        search_level_links = []
+        graph_level_nodes = links_to_parse.popleft()
 
+        for links_data in graph_level_nodes:
+            links, graph_path = links_data
+            if end in links:
+                graph_path.append(end)
+                return graph_path
 
-# Вспомогательная функция, её наличие не обязательно и не будет проверяться
-def build_bridge(start, end, path):
-    files = build_tree(start, end, path)
-    bridge = []
-    # TODO Добавить нужные страницы в bridge
-    return bridge
+            for link in links:
+                if link in parsed_links:
+                    continue
+
+                downlinks = get_downlinks(link)
+                new_path = graph_path + [link]
+                search_level_links.append((
+                    downlinks,
+                    new_path
+                ))
+                parsed_links.add(link)
+
+        if search_level_links:
+            links_to_parse.append(search_level_links)
 
 
 def parse(start, end, path):
@@ -70,7 +58,7 @@ def parse(start, end, path):
     Чтобы получить максимальный балл, придется искать все страницы. Удачи!
     """
 
-    bridge = build_bridge(start, end, path)  # Искать список страниц можно как угодно, даже так: bridge = [end, start]
+    bridge = build_links_path(start, end, path)  # Искать список страниц можно как угодно, даже так: bridge = [end, start]
 
     # Когда есть список страниц, из них нужно вытащить данные и вернуть их
     out = {}
@@ -78,19 +66,46 @@ def parse(start, end, path):
         with open("{}{}".format(path, file)) as data:
             soup = BeautifulSoup(data, "lxml")
 
-        body = soup.find(id="bodyContent")
+        body = soup.find('div', {'id': 'bodyContent'})
 
         # TODO посчитать реальные значения
-        imgs = 5  # Количество картинок (img) с шириной (width) не меньше 200
-        headers = 10  # Количество заголовков, первая буква текста внутри которого: E, T или C
-        linkslen = 15  # Длина максимальной последовательности ссылок, между которыми нет других тегов
-        lists = 20  # Количество списков, не вложенных в другие списки
+        # imgs = 5  # Количество картинок (img) с шириной (width) не меньше 200
+        # headers = 10  # Количество заголовков, первая буква текста внутри которого: E, T или C
+        # linkslen = 15  # Длина максимальной последовательности ссылок, между которыми нет других тегов
+        # lists = 20  # Количество списков, не вложенных в другие списки
 
-        out[file] = [imgs, headers, linkslen, lists]
+        # 1. count images whose width >= 200
+        images_count = 0
+        for pic in body.find_all('img', width=True):
+            if int(pic['width']) >= 200:
+                images_count += 1
+
+        # 2. count headers starts with [ETC]
+        headers = 0
+        for h_tag in body.select("h1, h2, h3, h4, h5, h6"):
+            if re.match(r'^[ETC].*$', h_tag.text):
+                headers += 1
+
+        # 3. calc length of sequence of links at the same level
+        max_links_seq_len = 0
+        next_link = body.find_next('a')
+        while next_link:
+            level_links_seq_len = 1
+            for sibling in next_link.find_next_siblings():
+                if sibling.name != 'a':
+                    break
+                level_links_seq_len += 1
+
+            max_links_seq_len = max(level_links_seq_len, max_links_seq_len)
+            next_link = next_link.find_next('a')
+
+        # 4. count html lists not inserted in other html lists
+        html_lists_count = 0
+        html_lists = body.find_all(['ul', 'ol'])
+        for html_list in html_lists:
+            if not html_list.find_parents(['ul', 'ol']):
+                html_lists_count += 1
+
+        out[file] = [images_count, headers, max_links_seq_len, html_lists_count]
 
     return out
-
-start = 'Stone_Age'
-end = 'Python_(programming_language)'
-path = './wiki/'
-build_tree(start, end, path)
