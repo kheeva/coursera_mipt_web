@@ -67,29 +67,32 @@ def parse(start, end, path):
         with open("{}{}".format(path, file)) as data:
             soup = BeautifulSoup(data, "lxml")
 
-        body = soup.find(id="bodyContent")
+        body = soup.find('div', {'id': 'bodyContent'})
 
+        # 1. count images whose width >= 200
         images_count = 0
         for pic in body.find_all('img', width=True):
             if int(pic['width']) >= 200:
                 images_count += 1
 
+        # 2. count headers starts with [ETC]
         headers = 0
         for h_tag in body.select("h1, h2, h3, h4, h5, h6"):
             if re.match(r'^[ETC].*$', h_tag.text):
                 headers += 1
 
-        links_seq_len = 0
+        # 3. calc length of sequence of links at the same level
         max_links_seq_len = 0
-        tags = [elem.name for elem in body.find('a').next_elements]
+        next_link = body.find_next('a')
+        while next_link:
+            level_links_seq_len = 1
+            for sibling in next_link.find_next_siblings():
+                if sibling.name != 'a':
+                    break
+                level_links_seq_len += 1
 
-        for tag in tags:
-            # print('tag', tag.name)
-            if tag == 'a':
-                links_seq_len += 1
-            elif tag is not None:
-                max_links_seq_len = max(links_seq_len, max_links_seq_len)
-                links_seq_len = 0
+            max_links_seq_len = max(level_links_seq_len, max_links_seq_len)
+            next_link = next_link.find_next('a')
 
         # TODO посчитать реальные значения
         # imgs = 5  # Количество картинок (img) с шириной (width) не меньше 200
@@ -103,7 +106,6 @@ def parse(start, end, path):
 
 
 start = 'Stone_Age'
-# start = 'Brain'
 end = 'Python_(programming_language)'
 path = './wiki/'
 
@@ -112,67 +114,9 @@ path = './wiki/'
 # print(x)
 # print(time.time() - t)
 
-with open("{}{}".format(path, 'Brain')) as data:
+with open("{}{}".format(path, start)) as data:
     soup = BeautifulSoup(data, "lxml")
 
-# body = soup.find('div', {'id': 'bodyContent'})
-body = soup.find(id="bodyContent")
-print(dir(body))
-
-links_seq_len = 0
-max_links_seq_len = 0
-tags = [elem.name for elem in body.next_elements if elem.name is not None]
-print(tags)
-print(soup.tagStack)
-for tag in tags:
-    if tag in ['a',]:
-        links_seq_len += 1
-    else:
-        max_links_seq_len = max(links_seq_len, max_links_seq_len)
-        links_seq_len = 0
-
-print(max_links_seq_len)
-
-#
-# def lll(file, path):
-#     # with open("{}{}".format(path, file)) as data:
-#     #     soup = BeautifulSoup(data, "lxml")
-#     #
-#     # body = soup.find(id="bodyContent")
-#
-#     regex = r"(?:<a.*?</a>)+[^(<a)]*?(?:<a.*?</a>)+"
-#
-#     test_str = ("<a href=\"Stone age\">Stone age</a>\n"
-#                 "<p>paragraph</p>\n"
-#                 "<a href=\"Python\">Python</a> текст <a href=\"C\">C</a>\n"
-#                 "<a href=\"Javascript\">Javascript</a>\n"
-#                 "<b>text</b><br />\n"
-#                 "<a href='Scala'>Scala</a> <a href=\"Scala2\">Scala2</a>")
-#
-#     # print(type(body.contents))
-#     print(re.findall(regex, test_str))
-
-# lll(start, path)
-# test_str = ("<a href=\"Stone age\">Stone age</a>\n"
-#                 "<p>paragraph</p>\n"
-#                 "<a href=\"Python\">Python</a> текст <a href=\"C\">C</a>\n"
-#                 "<a href=\"Javascript\">Javascript</a>\n"
-#                 "<b>text</b><br />\n"
-#                 "<a href='Scala'>Scala</a> <a href=\"Scala2\">Scala2</a>")
-#
-# b = BeautifulSoup(test_str, 'lxml')
+body = soup.find('div', {'id': 'bodyContent'})
 
 
-# links_count = 0
-# max_sequence = 0
-#
-# for i in b.body.next_elements:
-#     if i.name == 'a':
-#         links_count += 1
-#         print(i.string, links_count)
-#     elif i.name is not None:
-#         max_sequence = max(links_count, max_sequence)
-#         links_count = 0
-#
-#
-# print(max_sequence)
