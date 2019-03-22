@@ -5,6 +5,8 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
+from django.contrib.auth.mixins import LoginRequiredMixin
+
 from .models import Item, Review
 
 from jsonschema import validate
@@ -66,7 +68,7 @@ ADD_REVIEW_SCHEMA = {
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class AddItemView(View):
+class AddItemView(LoginRequiredMixin, View):
     """View для создания товара."""
 
     def post(self, request):
@@ -89,7 +91,7 @@ class AddItemView(View):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class PostReviewView(View):
+class PostReviewView(LoginRequiredMixin, View):
     """View для создания отзыва о товаре."""
 
     def post(self, request, item_id):
@@ -117,7 +119,7 @@ class PostReviewView(View):
                                 status=201)
 
 
-class GetItemView(View):
+class GetItemView(LoginRequiredMixin, View):
     """View для получения информации о товаре.
 
     Помимо основной информации выдает последние отзывы о товаре, не более 5
