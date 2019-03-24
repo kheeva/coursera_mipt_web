@@ -1,11 +1,13 @@
 import json
+import base64
 
 from django.http import HttpResponse, JsonResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, AccessMixin
+from django.contrib.auth import authenticate
 
 from .models import Item, Review
 
@@ -67,8 +69,27 @@ ADD_REVIEW_SCHEMA = {
 }
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class AddItemView(LoginRequiredMixin, View):
+class AuthenticatedStaffMixin:
+    def dispatch(self, request, *args, **kwargs):
+        if 'HTTP_AUTHORIZATION' in request.META:
+            auth_data = request.META['HTTP_AUTHORIZATION'].split()
+            if len(auth_data) == 2:
+                if auth_data[0].lower() == 'basic':
+                    token = base64.b64decode(auth_data[1].encode('ascii'))
+                    username, password = token.decode('ascii').split(':')
+                    user = authenticate(username=username, password=password)
+
+                    if user is not None and user.is_active:
+                        if not user.is_staff:
+                            return HttpResponse('', status=403)
+
+                        request.user = user
+                        return super().dispatch(request, *args, **kwargs)
+        return HttpResponse('', status=401)
+
+
+# @method_decorator(csrf_exempt, name='dispatch')
+class AddItemView(AuthenticatedStaffMixin, View):
     """View для создания товара."""
 
     def post(self, request):
@@ -90,8 +111,8 @@ class AddItemView(LoginRequiredMixin, View):
                                  "id": item.id}, status=201)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class PostReviewView(LoginRequiredMixin, View):
+# @method_decorator(csrf_exempt, name='dispatch')
+class PostReviewView(View):
     """View для создания отзыва о товаре."""
 
     def post(self, request, item_id):
@@ -119,7 +140,7 @@ class PostReviewView(LoginRequiredMixin, View):
                                 status=201)
 
 
-class GetItemView(LoginRequiredMixin, View):
+class GetItemView(View):
     """View для получения информации о товаре.
 
     Помимо основной информации выдает последние отзывы о товаре, не более 5
