@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:latest
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - ./db:/var/lib/postgresql/data:z
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:z
+    env_file:
+      - ./bot/.env
+    restart: always
+  bot:
+    image: myplaces-telebot:1.0
+    build: ./bot
+    volumes:
+      - ./bot:/workdir:z
+    restart: always
+    depends_on:
+      - "db"
