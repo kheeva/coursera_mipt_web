@@ -16,6 +16,8 @@ services:
     build: ./bot
     volumes:
       - ./bot:/workdir:z
+    env_file:
+      - ./bot/.env
     restart: always
     depends_on:
       - "db"

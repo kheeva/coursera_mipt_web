@@ -1,31 +1,21 @@
 import logging
 import time
 import os
-from os.path import join, dirname
-
-from dotenv import load_dotenv
 
 import psycopg2
 import psycopg2.pool
 
 
 class pgConn():
-    db = None
     cursor = None
-    engine = None
-    cnf = None
 
     def __init__(self):
-        dotenv_path = join(dirname(__file__), '.env')
-        load_dotenv(dotenv_path)
-        # self.cnf = cnf
         self.pool = self.connect()
 
     def __del__(self):
         self.pool.closeall()
 
     def connect(self):
-        # cnf = self.cnf
         while True:
             try:
                 pool = psycopg2.pool.ThreadedConnectionPool(
@@ -55,19 +45,56 @@ class pgConn():
                 conn.autocommit = True
                 return conn
 
-    def add_user_data(self, telegram_id, photo, place_point):
+    def add_user_data(self, telegram_id, name, photo, place_point):
         conn = self.get_conn()
         try:
             cur = conn.cursor()
             cur.execute(
                 '''
-                INSERT INTO users_data (telegram_id, photo, place_point)
-                VALUES (%s, %s, %s)''',
-                (telegram_id, photo, place_point)
+                INSERT INTO users_data (telegram_id, name, photo, place_point)
+                VALUES (%s, %s, %s, %s)''',
+                (telegram_id, name, photo, place_point)
             )
         except psycopg2.DatabaseError as err:
             logging.error(err)
         else:
             cur.close()
+        finally:
+            self.pool.putconn(conn)
+
+
+    def reset_user_data(self, telegram_id):
+        conn = self.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                '''
+                DELETE FROM users_data WHERE telegram_id=%s''',
+                (telegram_id,)
+            )
+        except psycopg2.DatabaseError as err:
+            logging.error(err)
+        else:
+            cur.close()
+        finally:
+            self.pool.putconn(conn)
+
+
+    def get_user_list(self, telegram_id, longitude, latitude, distance=500):
+        conn = self.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                '''
+                SELECT *, (place_point <-> POINT(%s,%s))*100000 AS distance FROM users_data WHERE
+                 telegram_id=%s AND (place_point <-> POINT(%s,%s))*100000 < %s''',
+                ( latitude, longitude, telegram_id, latitude, longitude, distance)
+            )
+            result = cur.fetchall()
+        except psycopg2.DatabaseError as err:
+            logging.error(err)
+        else:
+            cur.close()
+            return result
         finally:
             self.pool.putconn(conn)
