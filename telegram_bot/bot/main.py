@@ -1,5 +1,6 @@
 import requests
 import logging
+from logging.handlers import RotatingFileHandler
 from collections import defaultdict
 
 import telebot
@@ -7,7 +8,19 @@ import telebot
 from pg_conn import pgConn
 
 
-logging.basicConfig(filename="bot.log", level=logging.DEBUG)
+log_file = 'bot.log'
+handlers = []
+file_handler = logging.FileHandler(log_file)
+rotate_handler = RotatingFileHandler(filename=log_file, maxBytes=1024,backupCount=1)
+handlers.append(file_handler)
+handlers.append(rotate_handler)
+
+logging.basicConfig(
+	level=logging.DEBUG,
+	format="%(asctime)s %(levelname)s %(message)s",
+	handlers=handlers
+)
+
 db = pgConn()
 
 
@@ -109,7 +122,6 @@ def reply_places_list(message):
 def reply_places_list(message):
 	longitude_ = message.location.longitude
 	latitude_ = message.location.latitude
-	logging.info(f'{longitude_}, {latitude_}')
 	stored_places = db.get_user_list(message.chat.id, longitude_, latitude_)
 
 	if not stored_places:
@@ -121,7 +133,7 @@ def reply_places_list(message):
 			user_telegram_id, place_name, place_photo, place_location, ts, distance = place
 			distance = int(distance)
 
-			bot.reply_to(message, f'{place_name} / distance: {distance} meters')
+			bot.reply_to(message, f'\n{place_name} / distance: {distance} meters')
 			bot.send_photo(message.chat.id, bytes(place_photo))
 			latitude, longitude,  = place_location[1:-1].split(',')
 			bot.send_location(message.chat.id, longitude=longitude, latitude=latitude)
@@ -134,40 +146,9 @@ def reset_places(message):
 	bot.reply_to(message, 'Your places have been deleted!')
 
 
-def create_inline_keyboard():
-	keyboard = telebot.types.InlineKeyboardMarkup(row_width=2)
-	buttons = [telebot.types.InlineKeyboardButton(
-		text=action,
-		callback_data=action) for action in actions[:2]
-	]
-	keyboard.add(*buttons)
-	return keyboard
-
-
-@bot.callback_query_handler(func=lambda x: x.data == 'add place')
-def add_callback_handler(callback_query):
-	print(callback_query.message)
-
-
-@bot.callback_query_handler(func=lambda x: x.data == 'my list')
-def add_callback_handler(callback_query):
-	bot.answer_callback_query(callback_query.id, 'here wil be list of your favorite places')
-
-
-@bot.callback_query_handler(func=lambda x: x.data == 'reset')
-def add_callback_handler(callback_query):
-	print('delete my stored data')
-
-
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-	keyboard = create_inline_keyboard()
-	bot.reply_to(message, "Save a place you would like to visit", reply_markup=keyboard)
-
-
-@bot.message_handler(commands=['help'])
-def send_help(message):
-	bot.reply_to(message, "Command list: /add, /list, /reset")
+	bot.reply_to(message, "Save a place you would like to visit\nCommand list: /add, /list, /reset")
 
 
 bot.polling()

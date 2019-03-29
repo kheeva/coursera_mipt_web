@@ -87,7 +87,7 @@ class pgConn():
             cur.execute(
                 '''
                 SELECT *, (place_point <-> POINT(%s,%s))*100000 AS distance FROM users_data WHERE
-                 telegram_id=%s AND (place_point <-> POINT(%s,%s))*100000 < %s''',
+                 telegram_id=%s AND (place_point <-> POINT(%s,%s))*100000 < %s ORDER BY distance LIMIT 10''',
                 ( latitude, longitude, telegram_id, latitude, longitude, distance)
             )
             result = cur.fetchall()
