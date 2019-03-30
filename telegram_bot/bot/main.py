@@ -148,7 +148,12 @@ def reset_places(message):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-	bot.reply_to(message, "Save a place you would like to visit\nCommand list: /add, /list, /reset")
+	bot.reply_to(message,
+				 "Save a place you would like to visit\nCommand list:\n"
+				 " /add - add a new place,\n"
+				 " /list - print the closest places,\n"
+				 " /reset - remove your stored data from server,\n"
+				 " /stop - interrupt an unfinished action\n")
 
 
 bot.polling()
