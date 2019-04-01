@@ -1,0 +1,3 @@
+[
+  "tests/test_views.py::TestViews::()::test_get_controller_page"
+]
