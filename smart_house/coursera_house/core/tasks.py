@@ -5,13 +5,17 @@ import requests
 import json
 from django.conf import settings
 from django.core.mail import send_mail
-from .models import Setting, Sensors
+from .models import Setting
 
 
 def get_sensors_data():
     auth_header = {'Authorization': f'Bearer {settings.SMART_HOME_ACCESS_TOKEN}'}
-    user_request = requests.get(settings.SMART_HOME_API_URL, headers=auth_header)
-    return user_request.json()
+    try:
+        user_request = requests.get(settings.SMART_HOME_API_URL, headers=auth_header)
+    except Exception:
+        return {}
+    else:
+        return user_request.json()
 
 
 def update_sensors_data(data):
@@ -21,9 +25,15 @@ def update_sensors_data(data):
             {"name": key, "value": value}
         )
     auth_header = {'Authorization': f'Bearer {settings.SMART_HOME_ACCESS_TOKEN}'}
-    requests.post(settings.SMART_HOME_API_URL,
-                  headers=auth_header,
-                  data=json.dumps(data_to_send))
+    try:
+        request = requests.post(settings.SMART_HOME_API_URL,
+                      headers=auth_header,
+                      data=json.dumps(data_to_send))
+    except Exception:
+        status = 502
+    else:
+        status = request.status_code
+    return status
 
 
 @task()
@@ -31,32 +41,23 @@ def smart_home_manager():
     sensors_raw_data = get_sensors_data()
     sensors_dict = {}
     updated_sensors_dict = {}
-    leak_emailed = False
-    smoke_emailed = False
+    leak_file = 'leak.state'
+    try:
+        with open(leak_file) as f:
+            leak_emailed = f.read()
+    except Exception:
+        leak_emailed = 0
+    else:
+        pass
 
     bedroom_target_temperature = Setting.objects.get(
-        label='bedroom_target_temperature').value
+        controller_name='bedroom_target_temperature').value
 
     hot_water_target_temperature = Setting.objects.get(
-        label='hot_water_target_temperature').value
-
-    bedroom_light = Setting.objects.get(label='bedroom_light').value
-    bathroom_light = Setting.objects.get(label='bathroom_light').value
+        controller_name='hot_water_target_temperature').value
 
     for sensor in sensors_raw_data['data']:
         sensors_dict[sensor['name']] = sensor['value']
-
-    if bedroom_light != sensors_dict['bedroom_light']:
-        if sensors_dict['smoke_detector']:
-            updated_sensors_dict['bedroom_light'] = 0
-        else:
-            updated_sensors_dict['bedroom_light'] = bedroom_light
-
-    if bathroom_light != sensors_dict['bathroom_light']:
-        if sensors_dict['smoke_detector']:
-            updated_sensors_dict['bathroom_light'] = 0
-        else:
-            updated_sensors_dict['bathroom_light'] = bathroom_light
 
     if sensors_dict['leak_detector']:
         updated_sensors_dict['cold_water'] = 0
@@ -64,17 +65,19 @@ def smart_home_manager():
         updated_sensors_dict['boiler'] = 0
         updated_sensors_dict['washing_machine'] = "off"
 
-        if not leak_emailed:
+        if leak_emailed != '1':
             send_mail(
-                'Leak detected',
-                'Leak detected! Water has been closed.',
+                subject='Leak detected',
+                message='Leak detected! Water has been closed.',
                 from_email=settings.EMAIL_USER,
                 recipient_list=[settings.EMAIL_RECIPIENT],
                 fail_silently=True
             )
-            leak_emailed = True
+            with open(leak_file, 'w') as f:
+                f.write('1')
     else:
-        leak_emailed = False
+        with open(leak_file, 'w') as f:
+            f.write('0')
 
     if not sensors_dict['cold_water']:
         updated_sensors_dict['boiler'] = 0
@@ -103,18 +106,6 @@ def smart_home_manager():
             updated_sensors_dict[device] = 0
         updated_sensors_dict['washing_machine'] = "off"
 
-        if not smoke_emailed:
-            send_mail(
-                subject='smoke detected',
-                message='Smoke detected! All electrical devices have been powered off.',
-                from_email=settings.EMAIL_USER,
-                recipient_list=[settings.EMAIL_RECIPIENT],
-                fail_silently=True
-            )
-            smoke_emailed = True
-    else:
-        smoke_emailed = False
-
     if not sensors_dict['smoke_detector']:
         temp_koef = sensors_dict['bedroom_temperature'] / (
             bedroom_target_temperature)
@@ -125,7 +116,5 @@ def smart_home_manager():
         if round((temp_koef-1)*100) <= -10:
             updated_sensors_dict['air_conditioner'] = 0
 
-
-
-
-    update_sensors_data(updated_sensors_dict)
+    if updated_sensors_dict:
+        update_sensors_data(updated_sensors_dict)
