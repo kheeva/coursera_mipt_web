@@ -20,7 +20,7 @@ class ControllerView(FormView):
     def get(self, request, *args, **kwargs):
         """Handle GET requests: instantiate a blank version of the form."""
         sensors_data = get_sensors_data()
-        if sensors_data:
+        if sensors_data.get('data'):
             sensors_data = sensors_data['data']
         else:
             return HttpResponse(status=502)
@@ -77,6 +77,8 @@ class ControllerView(FormView):
     def update_settings(self, form):
         initial_data = form.initial
         posted_data = form.cleaned_data
+        # print(initial_data)
+        # print(posted_data)
         settings_updated = 0
         lights_updated = {}
 
@@ -109,10 +111,10 @@ class ControllerView(FormView):
             if update_status != 200:
                 return 502
 
-        if settings_updated:
-            manager_response = smart_home_manager()
-            if manager_response != 200:
-                return 502
+        # if settings_updated:
+        #     manager_response = smart_home_manager()
+        #     if manager_response != 200:
+        #         return 502
         return 200
 
     def form_valid(self, form):
