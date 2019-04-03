@@ -70,7 +70,7 @@ def smart_home_manager():
                 subject='Leak detected',
                 message='Leak detected! Water has been closed.',
                 from_email=settings.EMAIL_USER,
-                recipient_list=[settings.EMAIL_RECIPIENT],
+                recipient_list=[settings.EMAIL_RECIPIENT, settings.EMAIL_RECEPIENT],
                 fail_silently=True
             )
             with open(leak_file, 'w') as f:
@@ -116,5 +116,7 @@ def smart_home_manager():
         if round((temp_koef-1)*100) <= -10:
             updated_sensors_dict['air_conditioner'] = 0
 
+    status = 200
     if updated_sensors_dict:
-        update_sensors_data(updated_sensors_dict)
+        status = update_sensors_data(updated_sensors_dict)
+    return status

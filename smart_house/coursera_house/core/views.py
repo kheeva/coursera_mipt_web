@@ -6,13 +6,7 @@ from .models import Setting
 from .form import ControllerForm
 from .tasks import get_sensors_data, smart_home_manager, update_sensors_data
 
-# to delete
-# from django.utils.decorators import method_decorator
-# from django.views.decorators.csrf import csrf_exempt
-# end delete
 
-
-# @method_decorator(csrf_exempt, name='dispatch')
 class ControllerView(FormView):
     form_class = ControllerForm
     template_name = 'core/control.html'
@@ -23,13 +17,16 @@ class ControllerView(FormView):
     bath_light = 'bathroom_light'
     context_data = {}
 
-    def get_context_data(self, **kwargs):
-        context = super(ControllerView, self).get_context_data()
-        context['data'] = self.context_data
-        return context
+    def get(self, request, *args, **kwargs):
+        """Handle GET requests: instantiate a blank version of the form."""
+        sensors_data = get_sensors_data()
+        if sensors_data:
+            sensors_data = sensors_data['data']
+        else:
+            return HttpResponse(status=502)
 
-    def get_initial(self):
-        initial = super(ControllerView, self).get_initial()
+        for sensor in sensors_data:
+            self.context_data[sensor['name']] = sensor['value']
 
         if not Setting.objects.filter(controller_name=self.bed_controller_name):
             bedroom_setting = Setting(
@@ -45,25 +42,36 @@ class ControllerView(FormView):
                 value=80)
             bathroom_setting.save()
 
-        sensors_data = get_sensors_data()
-        if sensors_data:
-            sensors_data = sensors_data['data']
+        return self.render_to_response(self.get_context_data())
+
+    def post(self, request, *args, **kwargs):
+        """
+        Handle POST requests: instantiate a form instance with the passed
+        POST variables and then check if it's valid.
+        """
+        form = self.get_form()
+        if form.is_valid():
+            update_status = self.update_settings(form)
+            if update_status == 502:
+                return HttpResponse(status=502)
+            else:
+                return self.form_valid(form)
         else:
-            return HttpResponse(status=502)
+            return self.form_invalid(form)
 
-        for sensor in sensors_data:
-            self.context_data[sensor['name']] = sensor['value']
+    def get_context_data(self, **kwargs):
+        context = super(ControllerView, self).get_context_data()
+        context['data'] = self.context_data
+        return context
 
-        bed_light = self.context_data[self.bed_light]
-        bath_light = self.context_data[self.bath_light]
-
+    def get_initial(self):
+        initial = super(ControllerView, self).get_initial()
         initial[self.bed_controller_name] = Setting.objects.get(
             controller_name=self.bed_controller_name).value
         initial[self.bath_controller_name] = Setting.objects.get(
             controller_name=self.bath_controller_name).value
-        initial[self.bed_light] = bed_light
-        initial[self.bath_light] = bath_light
-
+        initial[self.bed_light] = self.context_data[self.bed_light]
+        initial[self.bath_light] = self.context_data[self.bath_light]
         return initial
 
     def update_settings(self, form):
@@ -97,11 +105,15 @@ class ControllerView(FormView):
                 lights_updated[self.bath_light] = posted_data[self.bath_light]
 
         if lights_updated:
-            update_sensors_data(lights_updated)
+            update_status = update_sensors_data(lights_updated)
+            if update_status != 200:
+                return 502
 
         if settings_updated:
-            smart_home_manager()
+            manager_response = smart_home_manager()
+            if manager_response != 200:
+                return 502
+        return 200
 
     def form_valid(self, form):
-        self.update_settings(form)
         return super(ControllerView, self).form_valid(form)
