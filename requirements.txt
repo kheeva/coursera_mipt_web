@@ -2,4 +2,4 @@ jupyter
 requests
 beautifulsoup4
 lxml
-django==1.11
+django==2.2.24
